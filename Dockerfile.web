@@ -34,11 +34,11 @@ COPY packages/ packages/
 # Re-link after source overlay (fixes any symlinks overwritten by COPY)
 RUN pnpm install --frozen-lockfile --offline
 
-# Set build-time env: tells Next.js rewrites to proxy API calls to the backend service
-ARG REMOTE_API_URL=http://backend:8080
+# NEXT_PUBLIC_* are baked into the client bundle at build time.
+# REMOTE_API_URL is read at runtime in proxy.ts — set via Zeabur Variables or
+# docker-compose `environment:` (not a Docker build-arg).
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
 ARG NEXT_PUBLIC_WS_URL
-ENV REMOTE_API_URL=$REMOTE_API_URL
 ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ENV STANDALONE=true

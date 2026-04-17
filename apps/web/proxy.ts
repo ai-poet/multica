@@ -1,5 +1,30 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+/** Paths forwarded to the Go backend (see proxy() below). */
+function shouldProxyToBackend(pathname: string): boolean {
+  if (pathname === "/ws") return true;
+  if (pathname === "/api" || pathname.startsWith("/api/")) return true;
+  if (pathname === "/auth" || pathname.startsWith("/auth/")) return true;
+  if (pathname === "/uploads" || pathname.startsWith("/uploads/")) return true;
+  return false;
+}
+
+/**
+ * Runtime reverse-proxy to the API server. Reads REMOTE_API_URL from the
+ * environment on each deploy (Zeabur Variables, docker-compose, etc.) — no
+ * rebuild required when only the backend URL changes, as long as the process
+ * restarts with the new env.
+ */
+function rewriteToBackend(req: NextRequest): NextResponse | null {
+  if (!shouldProxyToBackend(req.nextUrl.pathname)) return null;
+  // Bracket access so the bundler does not inline a build-time value; URL must
+  // come from the container env at runtime (Zeabur Variables, docker-compose).
+  const raw = process.env["REMOTE_API_URL"] ?? "http://localhost:8080";
+  const base = raw.replace(/\/$/, "");
+  const dest = new URL(req.nextUrl.pathname + req.nextUrl.search, base);
+  return NextResponse.rewrite(dest);
+}
+
 // Old workspace-scoped route segments that existed before the URL refactor
 // (pre-#1131). Any URL with these as the FIRST segment is a legacy URL that
 // needs to be rewritten to /{slug}/{route}/... so old bookmarks, deep links,
@@ -18,6 +43,9 @@ const LEGACY_ROUTE_SEGMENTS = new Set([
 
 // Next.js 16 renamed `middleware` → `proxy`. The runtime API is identical.
 export function proxy(req: NextRequest) {
+  const backend = rewriteToBackend(req);
+  if (backend) return backend;
+
   const { pathname } = req.nextUrl;
   const hasSession = req.cookies.has("multica_logged_in");
   const lastSlug = req.cookies.get("last_workspace_slug")?.value;
@@ -67,6 +95,10 @@ export function proxy(req: NextRequest) {
 
 export const config = {
   matcher: [
+    "/api/:path*",
+    "/auth/:path*",
+    "/uploads/:path*",
+    "/ws",
     "/",
     "/issues/:path*",
     "/projects/:path*",
